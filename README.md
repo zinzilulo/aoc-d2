@@ -1,111 +1,189 @@
-"Hardcaml Template Project"
-===========================
+# AoC Day 2 (Gift Shop) in (Haskell &) HardCaml
 
+This problem asks us to compute the sum of invalid product IDs across a set of numeric ranges.
 
-This repository provides a simple starter template for getting started with Hardcaml, including:
+An invalid product ID is a number formed by duplicating a sequence of digits, for example:
 
-- An RTL design that accepts a stream of numbers and calculates the range of the values,
-  including use of the Always DSL to construct a state-machine
-- A testbench, including waveform printing and VCD export using `hardcaml_test_harness`
-- A binary to generate RTL for synthesis
+- `11`, `22`
+- `1212`, `998998`
+- `824824`, `21212121`
 
-## Installing Hardcaml
+In general, these numbers all look like:
+$$
+\text{dup}(a) = a \times (10^k + 1)
+$$
+where `a` is a `k`-digit number. You can think of this as “write `a` twice and glue the copies together.”
 
-Hardcaml can be installed with opam. We highly recommend using Hardcaml with OxCaml (a
-bleeding-edge OCaml compiler), which includes some Jane Street compiler extensions and
-maintains the latest version of Hardcaml; while still maintaining direct compatibility
-with existing OCaml code and libraries. Note that when looking at Hardcaml GitHub
-repositories, the OxCaml version is in a branch named `with-extensions`.
+## Reformulation
 
-Install [opam, the OxCaml compiler, and some basic developer
-tools](https://oxcaml.org/get-oxcaml/) to get started.
+A straightforward solution would scan every number in each range `[lo, hi]` and check whether it’s a duplicated pattern. However, that would not be very efficient. We observe that for a fixed `k`:
+$$
+\text{dup}(a) = a \times (10^k + 1)
+$$
+is strictly increasing in `a`. That means all invalid IDs of a given digit width inside `[lo, hi]` come from a single, contiguous range of `a` values.
 
-For additional information on setting up the OCaml toolchain and editor support, see [Real
-World OCaml](https://dev.realworldocaml.org/install.html).
+Starting from:
+$$
+lo \le a(10^k + 1) \le hi
+$$
+we can invert the bounds to get:
 
-Once it's set up, make sure you have the current switch selected in your shell:
-
-```
-opam switch 5.2.0+ox
-
-eval $(opam env)
-```
-
-Then, install the core Hardcaml libraries and some other libraries used in Hardcaml projects:
-
-```
-opam install -y hardcaml hardcaml_test_harness hardcaml_waveterm ppx_hardcaml
-
-opam install -y core core_unix ppx_jane rope re dune
+```haskell
+loA = max (10^(k-1)) (ceilDiv lo (10^k + 1))
+hiA = min (10^k - 1) (hi `div` (10^k + 1))
 ```
 
-## Building the Example Project
+If `loA ≤ hiA`, then *all* invalid IDs for this `k` are just:
+$$
+(10^k + 1) \times \sum_{a=loA}^{hiA} a
+$$
+which we can compute directly using the arithmetic series formula. No per-ID checking required.
 
-To build the project, clone this repository and then run the following command, which will
-build the generator binary (note the exe prefix is standard for OCaml, even on Unix
-systems), as well as building and running all of the tests.
+## Haskell implementation
 
-```
-dune build bin/generate.exe @runtest
-```
+### Parsing and normalization
 
-To validate that the tests are running, try changing one of the input values in
-`test_range_finder.ml` and re-running the tests, to see if the printed values change. Once
-`dune` shows a diff in the tests, it can be accepted using the following command (this
-will modify the file in-place, so you may need to close and re-open it):
-
-```
-dune promote
-```
-
-For more on how expect-tests work, see [this blog post](https://blog.janestreet.com/the-joy-of-expect-tests/)
-
-### Viewing Waveforms
-
-Hardcaml has two main ways to view waveforms:
-
-- Exporting to a `.hardcamlwaveform` file, which, can be viewed using the Hardcaml
-  terminal waveform viewer.
-  - To try this, uncomment the `waves_config` definition that sets the format to
-    `Hardcamlwaveform`, then run the tests again. The file should save into `/tmp/` by
-    default.
-  - To run the viewer, `hardcaml-waveform-viewer show file.hardcamlwaveform` (if the
-    command isn't available, make sure you've activated the opam switch in the same shell
-    you're trying to run in, see above)
-  - Some more details on using the viewer are available [here](
-    https://www.janestreet.com/web-app/hardcaml-docs/simulating-circuits/waveterm_interactive_viewer)
-
-- Exporting to a `.vcd` file, which can be viewed using standard tools like
-  [GTKWave](https://gtkwave.sourceforge.net/) and [Surfer](https://surfer-project.org/)
-  - To try this, uncomment the `waves_config` definition that sets the format to
-    `Vcd`, then run the tests again. The file should save into `/tmp/` by default.
-
-For small tests, waveforms can also be printed inline (as shown in
-`test_range_finder.ml`), which is useful for documenting and visualizing design behavior,
-albeit not as useful for interactive debugging.
-
-### Generating RTL
-
-To generate RTL, run the compiled `generate.exe` binary, which will print the Verilog source:
-```
-bin/generate.exe range-finder
+```haskell
+parseInput :: String -> [Range]
+parseInput =
+  pairUp
+  . mapMaybe (readMaybe :: String -> Maybe Integer)
+  . split ",-"
 ```
 
-Note that dune should automatically copy the compiled binary into your source directory,
-but if it does not, all build products can be found in `_build/default/`.
+The input is split on commas and hyphens, parsed into integers, and paired up into `(lo, hi)` ranges. We then sort and merge overlapping ranges with `mergeRanges` so we don’t accidentally double-count anything.
 
-## Resources
+### Computing the sum
 
-- If you would like to run dune continuously to re-run tests every time a file is edited:
-
+```haskell
+invalidSumInRange :: Range -> Integer
+invalidSumInRange (lo, hi) =
+  sum [sumForK k | k <- [1 .. maxK]]
 ```
-dune build --watch --terminal-persistence=clear-on-rebuild-and-flush-history bin/generate.exe @runtest
+
+For each digit width `k`, we:
+
+- Compute `m = 10^k + 1`
+- Work out the valid range of `a` values using division
+- Use a closed-form sum to add them up
+- Multiply by `m` to get the contribution to the final answer
+
+This approach completely avoids iterating over individual product IDs and is fast even for large ranges.
+
+### Putting it together
+
+```haskell
+solve :: String -> Integer
+solve =
+  sum
+  . map invalidSumInRange
+  . mergeRanges
+  . parseInput
 ```
 
-- Hardcaml documentation and further tutorials [can be found
-  here](https://www.janestreet.com/web-app/hardcaml-docs/introduction/why/)
+## Hardware design in HardCaml
 
-- Real World OCaml is a [free online book](https://dev.realworldocaml.org/toc.html) for learning OCaml
+### Assumptions
 
-- The OCaml LSP and autoformatter can be used with VSCode, Emacs, and Vim, [see
-  instructions here](https://dev.realworldocaml.org/install.html#editor-setup)
+Doing string parsing and dynamic lists in hardware is painful and not very interesting here, so we make a few simplifying assumptions:
+
+- Input ranges are already parsed and de-duplicated
+- Ranges are streamed in one at a time
+- The circuit keeps a running accumulator for the total sum
+
+This lets us focus on the core numeric logic.
+
+## Streaming interface
+
+```ocaml
+module I = struct
+  type 'a t =
+    { clock : 'a
+    ; clear : 'a
+    ; start : 'a
+    ; finish : 'a
+    ; data_lo : 'a [@bits 64]
+    ; data_hi : 'a [@bits 64]
+    ; data_in_valid : 'a
+    }
+end
+```
+
+- `start` together with `data_in_valid` loads a new `(lo, hi)` range
+- `finish` signals that no more ranges are coming
+- The output is a `With_valid` sum that becomes valid when all ranges are processed
+
+## State machine
+
+```ocaml
+type t =
+  | Idle
+  | Running
+  | Done
+```
+
+### Idle
+
+The circuit waits for a valid input range. When one arrives, it initializes:
+
+- `k = 1`
+- `p10 = 10`
+- `p10_prev = 1`
+- the accumulator (which holds the global sum across all ranges)
+
+and transitions to `Running`.
+
+### Running
+
+For each digit width `k`, the circuit effectively enumerates all `k`-digit values of `a`.
+
+It computes:
+
+```ocaml
+m = p10 + 1
+prod = a * m
+```
+
+In software we’d just divide to find the valid bounds for `a`, but division is expensive in hardware and not directly available in HardCaml’s combinational logic. Instead, the design leans into sequential iteration.
+
+- Powers of ten are generated using shifts:
+
+  ```ocaml
+  p10_next = (p10 << 3) + (p10 << 1)
+  ```
+
+- The product `prod = a × (10^k + 1)` is built incrementally:
+
+  ```ocaml
+  prod <- prod + m
+  a    <- a + 1
+  ```
+
+Each cycle checks:
+
+- `prod < lo` → not in range yet, keep going
+- `prod > hi` → we’re done with this `k`, move to the next
+- otherwise → add `prod` to the accumulator
+
+This trades latency for much simpler and cheaper hardware, which is usually a good deal.
+
+### Done
+
+Once all digit widths have been processed:
+
+- `sum.valid` is asserted
+- the circuit waits for `finish`
+- then returns to `Idle`, ready for the next stream
+
+## Verification
+
+Two testbenches are used:
+
+1. A streaming test that prints waveforms for inspection
+2. A final end-to-end test that checks the result
+
+```ocaml
+[%expect {| (Result (sum 1227775554)) |}]
+```
+
+The hardware result exactly matches the reference Haskell implementation.

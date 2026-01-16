@@ -2,10 +2,10 @@ open! Core
 open! Hardcaml
 open! Hardcaml_demo_project
 
-let generate_range_finder_rtl () =
-  let module C = Circuit.With_interface (Range_finder.I) (Range_finder.O) in
+let generate_range_sum_rtl () =
+  let module C = Circuit.With_interface (Range_sum.I) (Range_sum.O) in
   let scope = Scope.create ~auto_label_hierarchical_ports:true () in
-  let circuit = C.create_exn ~name:"range_finder_top" (Range_finder.hierarchical scope) in
+  let circuit = C.create_exn ~name:"range_sum_top" (Range_sum.hierarchical scope) in
   let rtl_circuits =
     Rtl.create ~database:(Scope.circuit_database scope) Verilog [ circuit ]
   in
@@ -13,15 +13,14 @@ let generate_range_finder_rtl () =
   print_endline rtl
 ;;
 
-let range_finder_rtl_command =
+let range_sum_rtl_command =
   Command.basic
     ~summary:""
     [%map_open.Command
       let () = return () in
-      fun () -> generate_range_finder_rtl ()]
+      fun () -> generate_range_sum_rtl ()]
 ;;
 
 let () =
-  Command_unix.run
-    (Command.group ~summary:"" [ "range-finder", range_finder_rtl_command ])
+  Command_unix.run (Command.group ~summary:"" [ "range-finder", range_sum_rtl_command ])
 ;;
