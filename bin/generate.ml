@@ -22,5 +22,5 @@ let range_sum_rtl_command =
 ;;
 
 let () =
-  Command_unix.run (Command.group ~summary:"" [ "range-finder", range_sum_rtl_command ])
+  Command_unix.run (Command.group ~summary:"" [ "range-sum", range_sum_rtl_command ])
 ;;

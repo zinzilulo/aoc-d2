@@ -50,8 +50,8 @@ sumFromTo a b
 invalidSumInRange :: Range -> Integer
 invalidSumInRange (lo, hi) = sum [sumForK k | k <- [1 .. maxK]]
   where
-    -- Inputs go up to ~10 digits, so k up to 5 is enough. Or for generality compute maxK.
-    maxK = 12
+    -- For 64-bit values, duplicated numbers fit only for k ≤ 9. For generality compute maxK.
+    maxK = 9
 
     sumForK :: Int -> Integer
     sumForK k =

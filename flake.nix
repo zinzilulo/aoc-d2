@@ -1,5 +1,5 @@
 {
-  description = "OCaml Shell";
+  description = "HardCaml Shell with GHC 9.6";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
@@ -34,13 +34,25 @@
               pkgs.ocaml
               pkgs.dune_3
               pkgs.ocamlformat
+
+              pkgs.haskell.compiler.ghc96
+              pkgs.hlint
+              pkgs.cabal-install
             ];
 
             shellHook = ''
-              echo "OCaml Shell"
+              echo "HardCaml Shell"
               echo -n "OCaml:        " && ocamlc -version
               echo -n "Dune:         " && dune --version
               echo -n "ocamlformat:  " && ocamlformat --version
+              ghc --version
+              hlint --version
+
+              echo "Note: This shell doesn't setup OxCaml or HardCaml. Instructions: https://github.com/janestreet/hardcaml_template_project"
+
+              echo "Run:"
+              echo "opam switch 5.2.0+ox"
+              echo "eval \$(opam env)"
             '';
           };
         }

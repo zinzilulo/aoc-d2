@@ -1,5 +1,6 @@
 (* We generally open Core and Hardcaml in any source file in a hardware project. For
    design source files specifically, we also open Signal. *)
+
 open! Core
 open! Hardcaml
 open! Signal
@@ -51,7 +52,7 @@ let create
   let sum_valid = Variable.wire ~default:gnd () in
   let one = of_int_trunc ~width:num_bits 1 in
   let ten = of_int_trunc ~width:num_bits 10 in
-  let max_k = 12 in
+  let max_k = 9 in
   let open Hardcaml.Comb in
   let p10_next = sll p10.value ~by:3 +: sll p10.value ~by:1 in
   let m = p10.value +:. 1 in
@@ -71,19 +72,21 @@ let create
                 ]
             ] )
         ; ( Running
-          , [
-              (let a_max =
+          , [ (* Sequentially enumerate k-digit values of a and accumulate prod = a * (10^k + 1) that fall within [lo, hi]. *)
+              ((* Largest k-digit value of a *)
+               let a_max =
                  Signal.uresize ((p10_prev.value *: ten) -:. 1) ~width:num_bits
                in
                if_
+                 (* a = 0 is used as a sentinel to initialize k *)
                  (a.value ==: zero num_bits)
                  [ a <-- p10_prev.value
                  ; prod <-- Signal.uresize (p10_prev.value *: m) ~width:num_bits
                  ]
-                 [
-                   if_
+                 [ if_
                      (a.value >: a_max)
-                     [ a <-- zero num_bits
+                     [ (* Exhausted all k-digit a values; advance k *)
+                       a <-- zero num_bits
                      ; prod <-- zero num_bits
                      ; p10_prev <-- p10.value
                      ; p10 <-- p10_next
@@ -91,16 +94,21 @@ let create
                      ]
                      [ if_
                          (prod.value <: lo.value)
-                         [ a <-- a.value +:. 1; prod <-- prod.value +: m ]
+                         [ (* Below range; continue iteration *)
+                           a <-- a.value +:. 1
+                         ; prod <-- prod.value +: m
+                         ]
                          [ if_
                              (prod.value >: hi.value)
+                             (* Past upper bound; advance k *)
                              [ a <-- zero num_bits
                              ; prod <-- zero num_bits
                              ; p10_prev <-- p10.value
                              ; p10 <-- p10_next
                              ; k <-- k.value +:. 1
                              ]
-                             [ acc <-- acc.value +: prod.value
+                             [ (* Accumulate *)
+                               acc <-- acc.value +: prod.value
                              ; a <-- a.value +:. 1
                              ; prod <-- prod.value +: m
                              ]

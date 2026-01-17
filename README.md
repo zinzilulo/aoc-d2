@@ -8,36 +8,20 @@ An invalid product ID is a number formed by duplicating a sequence of digits, fo
 - `1212`, `998998`
 - `824824`, `21212121`
 
-In general, these numbers all look like:
-$$
-\text{dup}(a) = a \times (10^k + 1)
-$$
-where `a` is a `k`-digit number. You can think of this as “write `a` twice and glue the copies together.”
+In general, these numbers all have the form: $\text{dup}(a) = a \times (10^k + 1)$, where `a` is a `k`-digit number. Think of this as “write `a` twice and glue the copies together.”
 
 ## Reformulation
 
-A straightforward solution would scan every number in each range `[lo, hi]` and check whether it’s a duplicated pattern. However, that would not be very efficient. We observe that for a fixed `k`:
-$$
-\text{dup}(a) = a \times (10^k + 1)
-$$
-is strictly increasing in `a`. That means all invalid IDs of a given digit width inside `[lo, hi]` come from a single, contiguous range of `a` values.
+A straightforward solution would scan every number in each range `[lo, hi]` and check whether it’s a duplicated pattern. However, that would not be very efficient. We observe that for a fixed `k` $\text{dup}(a) = a \times (10^k + 1)$ is strictly increasing in `a`. That means all invalid IDs of a given digit width inside `[lo, hi]` come from a single, contiguous range of `a` values.
 
-Starting from:
-$$
-lo \le a(10^k + 1) \le hi
-$$
-we can invert the bounds to get:
+Starting from: $lo \le a(10^k + 1) \le hi$, we can invert the bounds to get:
 
 ```haskell
 loA = max (10^(k-1)) (ceilDiv lo (10^k + 1))
 hiA = min (10^k - 1) (hi `div` (10^k + 1))
 ```
 
-If `loA ≤ hiA`, then *all* invalid IDs for this `k` are just:
-$$
-(10^k + 1) \times \sum_{a=loA}^{hiA} a
-$$
-which we can compute directly using the arithmetic series formula. No per-ID checking required.
+If `loA ≤ hiA`, then all invalid IDs for this `k` are just: $(10^k + 1) \times \sum_{a=loA}^{hiA} a$, which we can compute directly using the arithmetic series formula. No per-ID checking required.
 
 ## Haskell implementation
 
@@ -68,7 +52,7 @@ For each digit width `k`, we:
 - Use a closed-form sum to add them up
 - Multiply by `m` to get the contribution to the final answer
 
-This approach completely avoids iterating over individual product IDs and is fast even for large ranges.
+This approach avoids iterating over each individual product ID and is fast even for large ranges.
 
 ### Putting it together
 
@@ -144,7 +128,7 @@ m = p10 + 1
 prod = a * m
 ```
 
-In software we’d just divide to find the valid bounds for `a`, but division is expensive in hardware and not directly available in HardCaml’s combinational logic. Instead, the design leans into sequential iteration.
+In software we’d just divide to find the valid bounds for `a`, but division is expensive in hardware and not directly available in HardCaml’s combinational logic. Instead, the design leans into iteration.
 
 - Powers of ten are generated using shifts:
 
@@ -177,13 +161,128 @@ Once all digit widths have been processed:
 
 ## Verification
 
-Two testbenches are used:
+We use two streaming tests with waveforms for inspections.
 
-1. A streaming test that prints waveforms for inspection
-2. A final end-to-end test that checks the result
+As expected, the hardware results exactly match the reference Haskell implementation.
 
 ```ocaml
-[%expect {| (Result (sum 1227775554)) |}]
-```
+dune build bin/generate.exe @runtest
+File "test/test_range_sum.ml", line 1, characters 0-0:
+diff --git a/_build/default/test/test_range_sum.ml b/_build/.sandbox/56537e1829c468b9cdc4791eef637e0b/default/test/test_range_sum.ml.corrected
+index e05ff98..e7b5050 100644
+--- a/_build/default/test/test_range_sum.ml
++++ b/_build/.sandbox/56537e1829c468b9cdc4791eef637e0b/default/test/test_range_sum.ml.corrected
+@@ -112,10 +112,110 @@ let run_with_waves ~name ranges =
 
-The hardware result exactly matches the reference Haskell implementation.
+ let%expect_test "range_sum waveforms (ranges_1)" =
+   run_with_waves ~name:"ranges_1" ranges_1;
+-  [%expect {| ("Final streaming sum" (!last_sum 1227775554)) |}]
++  [%expect {|
++    ("Final streaming sum" (!last_sum 1227775554))
++    ranges_1
++    ┌Signals─────────────────────┐┌Waves───────────────────────────────────────────────────────┐
++    │                            ││────────────────┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───│
++    │range_sum$a                 ││ 0              │1  │2  │3  │0  │10 │0  │100│0  │10.│0  │10.│
++    │                            ││────────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───│
++    │                            ││────────────────────┬───┬───────────────────────────────────│
++    │range_sum$acc               ││ 0                  │11 │33                                 │
++    │                            ││────────────────────┴───┴───────────────────────────────────│
++    │                            ││────────────┬───────────────────────────────────────────────│
++    │range_sum$hi                ││ 0          │22                                             │
++    │                            ││────────────┴───────────────────────────────────────────────│
++    │range_sum$i$clear           ││────┐                                                       │
++    │                            ││    └───────────────────────────────────────────────────────│
++    │range_sum$i$clock           ││┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ │
++    │                            ││  └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─│
++    │                            ││────────┬───────────────────────────────────────────────────│
++    │range_sum$i$data_hi         ││ 0      │22                                                 │
++    │                            ││────────┴───────────────────────────────────────────────────│
++    │range_sum$i$data_in_valid   ││        ┌───┐                                               │
++    │                            ││────────┘   └───────────────────────────────────────────────│
++    │                            ││────────┬───────────────────────────────────────────────────│
++    │range_sum$i$data_lo         ││ 0      │11                                                 │
++    │                            ││────────┴───────────────────────────────────────────────────│
++    │range_sum$i$finish          ││                                                            │
++    │                            ││────────────────────────────────────────────────────────────│
++    │range_sum$i$start           ││        ┌───┐                                               │
++    │                            ││────────┘   └───────────────────────────────────────────────│
++    │                            ││────────────┬───────────────┬───────┬───────┬───────┬───────│
++    │range_sum$k                 ││ 0          │1              │2      │3      │4      │5      │
++    │                            ││────────────┴───────────────┴───────┴───────┴───────┴───────│
++    │                            ││────────────┬───────────────────────────────────────────────│
++    │range_sum$lo                ││ 0          │11                                             │
++    │                            ││────────────┴───────────────────────────────────────────────│
++    │range_sum$o$sum$valid       ││                                                            │
++    │                            ││────────────────────────────────────────────────────────────│
++    │                            ││────────────────────┬───┬───────────────────────────────────│
++    │range_sum$o$sum$value       ││ 0                  │11 │33                                 │
++    │                            ││────────────────────┴───┴───────────────────────────────────│
++    │                            ││────────────┬───────────────┬───────┬───────┬───────┬───────│
++    │range_sum$p10               ││ 0          │10             │100    │1000   │10000  │100000 │
++    │                            ││────────────┴───────────────┴───────┴───────┴───────┴───────│
++    │                            ││────────────┬───────────────┬───────┬───────┬───────┬───────│
++    │range_sum$p10_prev          ││ 0          │1              │10     │100    │1000   │10000  │
++    │                            ││────────────┴───────────────┴───────┴───────┴───────┴───────│
++    │                            ││────────────────┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───│
++    │range_sum$prod              ││ 0              │11 │22 │33 │0  │10.│0  │10.│0  │10.│0  │10.│
++    │                            ││────────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───│
++    └────────────────────────────┘└────────────────────────────────────────────────────────────┘
++    |}]
+ ;;
+
+ let%expect_test "range_sum waveforms (ranges_2)" =
+   run_with_waves ~name:"ranges_2" ranges_2;
+-  [%expect {| ("Final streaming sum" (!last_sum <computed>)) |}]
++  [%expect {|
++    ("Final streaming sum" (!last_sum 35367539282))
++    ranges_2
++    ┌Signals─────────────────────┐┌Waves───────────────────────────────────────────────────────┐
++    │                            ││────────────────┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───│
++    │range_sum$a                 ││ 0              │1  │2  │3  │4  │5  │6  │7  │8  │9  │10 │0  │
++    │                            ││────────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───│
++    │                            ││────────────────────────────────────────────────────────────│
++    │range_sum$acc               ││ 0                                                          │
++    │                            ││────────────────────────────────────────────────────────────│
++    │                            ││────────────┬───────────────────────────────────────────────│
++    │range_sum$hi                ││ 0          │35281                                          │
++    │                            ││────────────┴───────────────────────────────────────────────│
++    │range_sum$i$clear           ││────┐                                                       │
++    │                            ││    └───────────────────────────────────────────────────────│
++    │range_sum$i$clock           ││┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ │
++    │                            ││  └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─│
++    │                            ││────────┬───────────────────────────────────────────────────│
++    │range_sum$i$data_hi         ││ 0      │35281                                              │
++    │                            ││────────┴───────────────────────────────────────────────────│
++    │range_sum$i$data_in_valid   ││        ┌───┐                                               │
++    │                            ││────────┘   └───────────────────────────────────────────────│
++    │                            ││────────┬───────────────────────────────────────────────────│
++    │range_sum$i$data_lo         ││ 0      │17330                                              │
++    │                            ││────────┴───────────────────────────────────────────────────│
++    │range_sum$i$finish          ││                                                            │
++    │                            ││────────────────────────────────────────────────────────────│
++    │range_sum$i$start           ││        ┌───┐                                               │
++    │                            ││────────┘   └───────────────────────────────────────────────│
++    │                            ││────────────┬───────────────────────────────────────────┬───│
++    │range_sum$k                 ││ 0          │1                                          │2  │
++    │                            ││────────────┴───────────────────────────────────────────┴───│
++    │                            ││────────────┬───────────────────────────────────────────────│
++    │range_sum$lo                ││ 0          │17330                                          │
++    │                            ││────────────┴───────────────────────────────────────────────│
++    │range_sum$o$sum$valid       ││                                                            │
++    │                            ││────────────────────────────────────────────────────────────│
++    │                            ││────────────────────────────────────────────────────────────│
++    │range_sum$o$sum$value       ││ 0                                                          │
++    │                            ││────────────────────────────────────────────────────────────│
++    │                            ││────────────┬───────────────────────────────────────────┬───│
++    │range_sum$p10               ││ 0          │10                                         │100│
++    │                            ││────────────┴───────────────────────────────────────────┴───│
++    │                            ││────────────┬───────────────────────────────────────────┬───│
++    │range_sum$p10_prev          ││ 0          │1                                          │10 │
++    │                            ││────────────┴───────────────────────────────────────────┴───│
++    │                            ││────────────────┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───│
++    │range_sum$prod              ││ 0              │11 │22 │33 │44 │55 │66 │77 │88 │99 │110│0  │
++    │                            ││────────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───│
++    └────────────────────────────┘└────────────────────────────────────────────────────────────┘
++    |}]
+ ;;
+```
